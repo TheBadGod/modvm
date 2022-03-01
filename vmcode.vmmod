@@ -1,0 +1,258 @@
+# xors the value in x10 with x1 and then
+# ands it with x2
+# clobbers x10, x11, x12
+jmp _start
+
+.data:
+.db 0xfd
+
+# .org 0x100
+xorstuff:
+    mov x20, x0
+    mov x21, x1
+    mov x22, x11
+    mov x0, 0
+a:
+    # assembler will now assemble xors as ands and vice versa
+    remap 6, 7
+    add x0, 1
+
+    # first iteration it's actually an and
+    and x10, x11
+    
+    mov x11, x12
+    sub x0, 2
+    jz x0, out
+    add x0, 2
+
+    jmp a
+out:
+    mov x0, x20
+    mov x1, x21
+    mov x11, x22
+    ret
+
+add_x1x0_x3x2:
+    mov x4, x0
+    add x0, x2
+    # if (x0+x2) < x0 => overflow occured
+    # if x0 < x4: goto add one
+    jl x0, x4, .add_one
+    jmp .highbytes
+.add_one:
+    add x1, 1
+.highbytes:
+    add x1, x3
+    ret
+
+remap 6, 7
+
+compress_byte_aa:
+    mov x12, 0
+    # extract bit
+    mov x11, x10
+    shr x11, 1
+    and x11, 1
+    xor x12, x11 
+    # shift right once, extract bit 2
+    mov x11, x10
+    shr x11, 2
+    and x11, 2
+    xor x12, x11
+    # bit 3
+    mov x11, x10
+    shr x11, 3
+    and x11, 4
+    xor x12, x11
+    # bit 4
+    mov x11, x10
+    shr x11, 4
+    and x11, 8
+    xor x12, x11
+
+    mov x10, x12
+    ret
+
+compress_byte_55:
+    mov x12, 0
+    # extract bit
+    mov x11, x10
+    # shr x11, 0
+    and x11, 1
+    xor x12, x11
+    # shift right once, extract bit 2
+    mov x11, x10
+    shr x11, 1
+    and x11, 2
+    xor x12, x11
+    # bit 3
+    mov x11, x10
+    shr x11, 2
+    and x11, 4
+    xor x12, x11
+    # bit 4
+    mov x11, x10
+    shr x11, 3
+    and x11, 8
+    xor x12, x11
+
+    mov x10, x12
+    ret
+
+decode_flag:
+    mov x0, 0
+.decode_loop:
+    ld x10, correct_flag, x0
+    call compress_byte_55
+    mov x4, x10
+    ld x10, correct_flag, x0
+    call compress_byte_aa
+    shl x10, 4
+    xor x4, x10
+    str x4, correct_flag, x0
+
+    sub x0, 0x35
+    jz x0, .enddecode
+    add x0, 0x36
+    jmp .decode_loop
+.enddecode:
+    ret
+
+correct_flag:
+    .str 5bff38dd35f120d506f33bfb1ea927d112ae26d22afb1bff209c0afb7ad93bff00bc0af820f133d718b872ce30d130e132d718e963d3
+
+checkflag:
+    rd x0
+    sub x0, 0x69
+    jz x0, .c1
+    jmp wrong
+.c1:
+    rd x0
+    sub x0, 0x63
+    jz x0, .c2
+    jmp wrong
+.c2:
+    rd x0
+    sub x0, 0x74
+    jz x0, .c3
+    jmp wrong
+.c3:
+    rd x0
+    sub x0, 0x66
+    jz x0, .c4
+    jmp wrong
+.c4:
+
+# basically just gets
+    mov x0, 0
+.readloop:
+    rd x1
+    sub x1, 10
+    jz x1, .endloop
+    add x1, 10
+
+    str x1, .data, x0
+    add x0, 1
+    jmp .readloop
+
+.endloop:
+    mov x6, x0
+
+# data is in .data
+#   check for null in correct position and not one earlier
+    ld x10, .data, 26
+    mov x11, 0
+    not x11
+    mov x12, 0x55
+    call xorstuff
+    add x10, 0x68
+    jz x10, wrong
+    ld x10, .data, 27
+    mov x11, 0
+    not x11
+    mov x12, 0x69
+    call xorstuff
+    add x10, 0x5c
+    jz x10, .realcheck
+    jmp wrong
+.realcheck:
+
+#.data should contain the flag 
+#`{r3vv1ng_w4s_th3_e4sy_p4rt}`
+
+    mov x0, 0
+    mov x5, 0
+    mov x11, 0x69
+.checkloop:
+# do stuff here
+    ld x10, .data, x0
+    mov x12, 0x54
+    # return (data[x0] & x11) ^ 0x54
+    call xorstuff
+    mov x3, x10
+
+    ld x10, .data, x0
+    # set x11 to ~x11 and x12 to something else
+    not x11
+    mov x12, 0x12
+    not x12
+
+    call xorstuff
+    mov x4, x10
+
+    ld x10, correct_flag, x5
+    add x5, 1
+    xor x10, x3
+    jz x10, .corrchar1
+    jmp wrong
+.corrchar1:
+    ld x10, correct_flag, x5
+    add x5, 1
+    xor x10, x4
+    jz x10, .corrchar2
+    jmp wrong
+.corrchar2:
+
+    mov x11, x3
+    add x11, x4
+
+    add x0, 1
+    sub x0, x6
+    jz x0, .end
+    add x0, x6
+    jmp .checkloop
+
+.end:
+    mov x0, 'Y'
+    pr x0
+    mov x0, 'a'
+    pr x0
+    mov x0, 'y'
+    pr x0
+    mov x0, 10
+    pr x0
+
+    ret
+
+
+# noreturn
+wrong:
+    mov x0, 'W'
+    pr x0
+    mov x0, 'r'
+    pr x0
+    mov x0, 'o'
+    pr x0
+    mov x0, 'n'
+    pr x0
+    mov x0, 'g'
+    pr x0
+    mov x0, 10
+    pr x0
+    exit 1
+
+    
+_start:
+    call decode_flag
+    call checkflag
+    exit 0
