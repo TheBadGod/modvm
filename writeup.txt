@@ -1,0 +1,40 @@
+Solve idea(s):
+Shared between the two: 
+	Start reversing the VM::VM constructor to see the map of opcodes to 
+	functions, reverse the mov function (which has an interesting assert 
+	in it, intentional???), so we can see that immediates are values up 
+	to 0x7f and registers are 0x80 | register_idx, everything is 1-byte, 
+	VM::r reads an unsigned x-byte integer and VM::rs reads a signed 
+	x-byte integer, where x is the second argument. 
+	Rev some more to get some understanding of opcodes (not all are necessary).
+	There is one interesting opcode: it can remap other opcodes; although it's
+	not used very much in the actual challenge, it is used in two locations
+	so we need to be careful when disassembling those two functions.
+	Else just try to look for functions (Using the call/return instructions)
+	And get a general overview of what happens where.
+
+Rev:
+	 Three is a function inside the bytecode of the vm which decodes the 
+	"encrypted"/encoded flag value in-place in the bytecode, so we could 
+	patch the bytecode to print the decoded values 
+	(or look at memory after decoding). After that a function is called 
+	to check the flag (we can detect this function by the constants 'i' 'c' 't' 'f'), 
+	disassembling that will reveal that it reads one byte at a time and compares it to the "ictf", 
+	then enters a gets-like loop which just reads data into memory, then the length of the input 
+	string is checked and an encoding algorithm is run over this buffer if the length was correct, 
+	comparing the output of the algorithm to the decoded flag bytes from earlier. 
+	reversing this algorithm should be trivial, since all it does is split the bits of the 
+	input into two bytes (depending on previous iterations it's different bits in the first, 
+	but in the second byte there are always the remaining bits). 
+	
+Pwn: 
+	Either when revving see that it's gets and we can overwrite three bytes 
+	or just spam characters with cyclic to get a "Failure with opcode lookup!
+	Failed opcode: 97" and realize we can overwrite three bytes, use a jmp 
+	backwards (0x100 bytes, to the start of the input data), and send shellcode 
+	(whatever you need, reading more shellcode or setting stuff up, works both). 
+	Then use the fact that the array for registers is too small and we can rop 
+	with ~1.5 addresses because the vm object is on the stack. 
+	Leak libc by printing the original return address 
+	(which would return into __libc_start_call_main and then use a 
+	pop rsp to stack pivot into the mmaped bytecode area, then use a ret2libc to win
